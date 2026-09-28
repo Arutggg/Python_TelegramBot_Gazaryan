@@ -1,7 +1,7 @@
 import datetime
 
 import pytest
-from telegram import Chat, Message, MessageEntity, Update, User
+from telegram import CallbackQuery, Chat, Message, MessageEntity, Update, User
 
 from bot.app import create_updater
 
@@ -15,9 +15,20 @@ class FakeTelegram:
         self.bot._bot = User(1, "Calendar", True, username="calendar_test_bot")
         self.sent = []  # все сообщения, отправленные ботом: (chat_id, text, kwargs)
         self.bot.send_message = self._send_message
+        self.bot.answer_callback_query = self._answer_callback_query
+        self.bot.edit_message_text = self._edit_message_text
+        self.alerts = []  # всплывающие ответы на нажатия кнопок
         self.update_id = 0
 
     def _send_message(self, chat_id, text, **kwargs):
+        self.sent.append((chat_id, text, kwargs))
+
+    def _answer_callback_query(self, callback_query_id, text=None, **kwargs):
+        if text:
+            self.alerts.append(text)
+        return True
+
+    def _edit_message_text(self, text, chat_id=None, message_id=None, **kwargs):
         self.sent.append((chat_id, text, kwargs))
 
     def _next_id(self):
@@ -37,6 +48,31 @@ class FakeTelegram:
         self.sent.clear()
         self.updater.dispatcher.process_update(Update(self.update_id, message=message))
         return self.last_to(user_id)
+
+    def press(self, user_id, callback_data):
+        """Нажимает инлайн-кнопку с callback_data от имени пользователя."""
+        user = User(user_id, f"User{user_id}", False, username=f"user{user_id}")
+        message = Message(
+            self._next_id(), datetime.datetime.now(), Chat(user_id, Chat.PRIVATE),
+            text="кнопки", bot=self.bot,
+        )
+        query = CallbackQuery(
+            str(self.update_id), user, "chat", message=message, data=callback_data, bot=self.bot
+        )
+        self.sent.clear()
+        self.alerts.clear()
+        self.updater.dispatcher.process_update(Update(self.update_id, callback_query=query))
+        return self.alerts[-1] if self.alerts else self.last_to(user_id)
+
+    def buttons_to(self, chat_id):
+        """callback_data всех кнопок в сообщениях, отправленных пользователю."""
+        return [
+            button.callback_data
+            for cid, _, kwargs in self.sent
+            if cid == chat_id and kwargs.get("reply_markup")
+            for row in kwargs["reply_markup"].inline_keyboard
+            for button in row
+        ]
 
     def last_to(self, chat_id):
         texts = [text for cid, text, _ in self.sent if cid == chat_id]

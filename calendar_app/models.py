@@ -1,3 +1,5 @@
+import datetime
+
 from django.db import models
 
 
@@ -58,3 +60,64 @@ class BotStatistics(models.Model):
 
     def __str__(self):
         return f"Статистика за {self.date:%d.%m.%Y}"
+
+
+class MeetingStatus(models.TextChoices):
+    PENDING = "pending", "Ожидается"
+    CONFIRMED = "confirmed", "Подтверждена"
+    CANCELLED = "cancelled", "Отменена"
+
+
+class Meeting(models.Model):
+    """Встреча, которую один пользователь назначает другим."""
+
+    organizer = models.ForeignKey(
+        BotUser, on_delete=models.CASCADE, related_name="organized_meetings", verbose_name="Организатор"
+    )
+    title = models.CharField("Тема", max_length=255)
+    date = models.DateField("Дата")
+    time = models.TimeField("Время")
+    duration_minutes = models.PositiveIntegerField("Длительность, мин", default=60)
+    participants = models.ManyToManyField(
+        BotUser, through="MeetingParticipant", related_name="meetings", verbose_name="Участники"
+    )
+    status = models.CharField(
+        "Статус", max_length=16, choices=MeetingStatus.choices, default=MeetingStatus.PENDING
+    )
+    created_at = models.DateTimeField("Создана", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Встреча"
+        verbose_name_plural = "Встречи"
+        ordering = ["date", "time"]
+
+    def __str__(self):
+        return f"{self.title} — {self.date:%d.%m.%Y} {self.time:%H:%M}"
+
+    @property
+    def start(self):
+        return datetime.datetime.combine(self.date, self.time)
+
+    @property
+    def end(self):
+        return self.start + datetime.timedelta(minutes=self.duration_minutes)
+
+
+class MeetingParticipant(models.Model):
+    """Участник встречи и его ответ на приглашение."""
+
+    meeting = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name="invitations")
+    user = models.ForeignKey(BotUser, on_delete=models.CASCADE, related_name="invitations")
+    status = models.CharField(
+        "Ответ", max_length=16, choices=MeetingStatus.choices, default=MeetingStatus.PENDING
+    )
+
+    class Meta:
+        verbose_name = "Участник встречи"
+        verbose_name_plural = "Участники встречи"
+        constraints = [
+            models.UniqueConstraint(fields=["meeting", "user"], name="unique_meeting_participant"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} — {self.get_status_display()}"

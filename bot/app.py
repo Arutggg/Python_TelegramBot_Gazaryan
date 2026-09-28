@@ -3,8 +3,9 @@ import logging
 
 from django.conf import settings
 from django.db import close_old_connections, connection
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
+    CallbackQueryHandler,
     CommandHandler,
     ConversationHandler,
     Filters,
@@ -13,6 +14,13 @@ from telegram.ext import (
     Updater,
 )
 
+from calendar_app.meetings import (
+    DEFAULT_DURATION,
+    create_meeting,
+    respond_to_meeting,
+    user_meetings,
+)
+from calendar_app.models import MeetingStatus
 from calendar_app.services import (
     DATE_FORMAT,
     TIME_FORMAT,
@@ -37,7 +45,12 @@ logger = logging.getLogger(__name__)
     EDIT_TIME,
     EDIT_DETAILS,
     ASK_NAME,
-) = range(9)
+    MEETING_TITLE,
+    MEETING_DATE,
+    MEETING_TIME,
+    MEETING_DURATION,
+    MEETING_PARTICIPANTS,
+) = range(14)
 
 KEEP = "-"  # ввод «-» при редактировании оставляет старое значение
 TEXT = Filters.text & ~Filters.command
@@ -50,6 +63,8 @@ HELP_TEXT = (
     "/read_event [название] — показать событие\n"
     "/edit_event — изменить событие\n"
     "/delete_event [название] — удалить событие\n"
+    "/meeting — назначить встречу другим пользователям\n"
+    "/meetings — мои встречи и их статусы\n"
     "/cancel — отменить текущее действие"
 )
 
@@ -65,6 +80,28 @@ def format_events(events, empty_text="Событий пока нет."):
     if not events:
         return empty_text
     return "\n\n".join(format_event(event) for event in events)
+
+
+STATUS_ICONS = {
+    MeetingStatus.PENDING: "⏳",
+    MeetingStatus.CONFIRMED: "✅",
+    MeetingStatus.CANCELLED: "❌",
+}
+
+
+def format_meeting(meeting):
+    participants = ", ".join(
+        f"{invitation.user} {STATUS_ICONS[invitation.status]}"
+        for invitation in meeting.invitations.all()
+    )
+    return (
+        f"{STATUS_ICONS[meeting.status]} {meeting.title} — "
+        f"{meeting.date.strftime(DATE_FORMAT)} в {meeting.time.strftime(TIME_FORMAT)} "
+        f"({meeting.duration_minutes} мин)\n"
+        f"Статус: {meeting.get_status_display()}\n"
+        f"Организатор: {meeting.organizer}\n"
+        f"Участники: {participants}"
+    )
 
 
 def registered_only(handler):
@@ -265,6 +302,128 @@ def ask_name(update, context, calendar):
     return run_action(update, calendar, action, update.message.text.strip())
 
 
+# ---------- Встречи: тема → дата → время → длительность → участники ----------
+
+@registered_only
+def meeting_start(update, context, calendar):
+    context.user_data.clear()
+    update.message.reply_text("Тема встречи?")
+    return MEETING_TITLE
+
+
+def meeting_title(update, context):
+    context.user_data["title"] = update.message.text.strip()
+    update.message.reply_text("Дата встречи (ДД.ММ.ГГГГ):")
+    return MEETING_DATE
+
+
+def meeting_date(update, context):
+    try:
+        parse_date(update.message.text)
+    except CalendarError as error:
+        update.message.reply_text(str(error))
+        return MEETING_DATE
+    context.user_data["date"] = update.message.text.strip()
+    update.message.reply_text("Время начала (ЧЧ:ММ):")
+    return MEETING_TIME
+
+
+def meeting_time(update, context):
+    try:
+        parse_time(update.message.text)
+    except CalendarError as error:
+        update.message.reply_text(str(error))
+        return MEETING_TIME
+    context.user_data["time"] = update.message.text.strip()
+    update.message.reply_text(
+        f"Длительность в минутах (или /skip — {DEFAULT_DURATION} минут):"
+    )
+    return MEETING_DURATION
+
+
+def meeting_duration(update, context):
+    text = update.message.text.strip()
+    if text == "/skip":
+        duration = DEFAULT_DURATION
+    elif text.isdigit() and int(text) > 0:
+        duration = int(text)
+    else:
+        update.message.reply_text("Введите число минут, например 30:")
+        return MEETING_DURATION
+    context.user_data["duration"] = duration
+    update.message.reply_text(
+        "Кого пригласить? Напишите @username или Telegram ID через пробел.\n"
+        "Участники должны быть зарегистрированы в боте."
+    )
+    return MEETING_PARTICIPANTS
+
+
+def invitation_keyboard(meeting):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Принять", callback_data=f"meeting:accept:{meeting.id}"),
+        InlineKeyboardButton("❌ Отклонить", callback_data=f"meeting:decline:{meeting.id}"),
+    ]])
+
+
+@registered_only
+def meeting_participants(update, context, calendar):
+    data = context.user_data
+    identifiers = update.message.text.replace(",", " ").split()
+    try:
+        meeting, invited, problems = create_meeting(
+            calendar.user, data["title"], data["date"], data["time"], data["duration"], identifiers
+        )
+    except CalendarError as error:
+        update.message.reply_text(f"{error}\n\nВведите других участников или /cancel:")
+        return MEETING_PARTICIPANTS
+    data.clear()
+
+    for user in invited:
+        context.bot.send_message(
+            chat_id=user.telegram_id,
+            text=f"{calendar.user} приглашает вас на встречу:\n\n{format_meeting(meeting)}",
+            reply_markup=invitation_keyboard(meeting),
+        )
+    text = "Встреча создана, приглашения отправлены:\n\n" + format_meeting(meeting)
+    if problems:
+        text += "\n\nНе приглашены:\n" + "\n".join(problems)
+    update.message.reply_text(text)
+    return ConversationHandler.END
+
+
+@registered_only
+def list_meetings(update, context, calendar):
+    meetings = user_meetings(calendar.user)
+    if not meetings:
+        update.message.reply_text("Встреч пока нет. Назначить: /meeting")
+        return
+    update.message.reply_text(
+        "Ваши встречи:\n\n" + "\n\n".join(format_meeting(meeting) for meeting in meetings)
+    )
+
+
+def answer_invitation(update, context):
+    """Нажатие «Принять» / «Отклонить» под приглашением."""
+    query = update.callback_query
+    _, action, meeting_id = query.data.split(":")
+    user = get_user(query.from_user.id)
+    try:
+        meeting = respond_to_meeting(int(meeting_id), user, accept=action == "accept")
+    except CalendarError as error:
+        query.answer(str(error), show_alert=True)
+        return
+    query.answer()
+    accepted = action == "accept"
+    query.edit_message_text(
+        f"Вы {'приняли' if accepted else 'отклонили'} приглашение.\n\n{format_meeting(meeting)}"
+    )
+    context.bot.send_message(
+        chat_id=meeting.organizer.telegram_id,
+        text=f"{user} {'принял(а)' if accepted else 'отклонил(а)'} приглашение.\n\n"
+        f"{format_meeting(meeting)}",
+    )
+
+
 def error_handler(update, context):
     logger.exception("Ошибка при обработке обновления", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
@@ -320,7 +479,25 @@ def create_updater(token=None):
         allow_reentry=True,
     ))
 
+    dispatcher.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("meeting", meeting_start)],
+        states={
+            MEETING_TITLE: [MessageHandler(TEXT, meeting_title)],
+            MEETING_DATE: [MessageHandler(TEXT, meeting_date)],
+            MEETING_TIME: [MessageHandler(TEXT, meeting_time)],
+            MEETING_DURATION: [
+                MessageHandler(TEXT, meeting_duration),
+                CommandHandler("skip", meeting_duration),
+            ],
+            MEETING_PARTICIPANTS: [MessageHandler(TEXT, meeting_participants)],
+        },
+        fallbacks=[cancel_handler],
+        allow_reentry=True,
+    ))
+    dispatcher.add_handler(CallbackQueryHandler(answer_invitation, pattern=r"^meeting:(accept|decline):\d+$"))
+
     dispatcher.add_handler(CommandHandler(["start", "help"], start))
+    dispatcher.add_handler(CommandHandler("meetings", list_meetings))
     dispatcher.add_handler(CommandHandler("register", register))
     dispatcher.add_handler(CommandHandler("events", display_events))
     dispatcher.add_handler(cancel_handler)
