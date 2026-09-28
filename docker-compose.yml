@@ -4,9 +4,9 @@ services:
       context: .
       dockerfile: docker/db/Dockerfile
     environment:
-      POSTGRES_DB: ${DB_NAME:-calendar_bot}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-calendar_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data  # данные переживают перезапуск и пересборку
     healthcheck:
@@ -21,9 +21,13 @@ services:
       context: .
       dockerfile: docker/web/Dockerfile
     env_file: .env
-    environment:
+    environment: &db-connection
+      # В Docker подключение к базе всегда берётся из POSTGRES_*, а не из DB_* в .env
       DB_HOST: db
       DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-calendar_bot}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "8000:8000"
     depends_on:
@@ -42,8 +46,7 @@ services:
       dockerfile: docker/bot/Dockerfile
     env_file: .env
     environment:
-      DB_HOST: db
-      DB_PORT: "5432"
+      <<: *db-connection
       INTERNAL_WEB_URL: http://web:8000
     depends_on:
       db:
