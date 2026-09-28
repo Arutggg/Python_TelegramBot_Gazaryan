@@ -1,6 +1,7 @@
 """Бизнес-логика календаря. Бот и веб-приложение работают с данными только через эти функции."""
 import datetime
 
+from . import stats
 from .models import BotUser, Event
 
 DATE_FORMAT = "%d.%m.%Y"
@@ -27,10 +28,13 @@ def parse_time(text):
 
 def register_user(telegram_id, username="", first_name=""):
     """Регистрирует пользователя. Возвращает (пользователь, создан_ли_он_сейчас)."""
-    return BotUser.objects.get_or_create(
+    user, created = BotUser.objects.get_or_create(
         telegram_id=telegram_id,
         defaults={"username": username or "", "first_name": first_name or ""},
     )
+    if created:
+        stats.track_new_user()
+    return user, created
 
 
 def get_user(telegram_id):
@@ -55,13 +59,15 @@ class Calendar:
     def create_event(self, event_name, event_date, event_time, event_details=""):
         if self.event_exists(event_name):
             raise CalendarError(f"Событие «{event_name}» уже есть.")
-        return Event.objects.create(
+        event = Event.objects.create(
             owner=self.user,
             name=event_name,
             date=parse_date(event_date),
             time=parse_time(event_time),
             details=event_details,
         )
+        stats.track_event_created()
+        return event
 
     def read_event(self, event_name):
         return self._get(event_name)
@@ -75,11 +81,13 @@ class Calendar:
         if new_description is not None:
             event.details = new_description
         event.save()
+        stats.track_event_edited()
         return event
 
     def delete_event(self, event_name):
         event = self._get(event_name)
         event.delete()
+        stats.track_event_cancelled()
         return event
 
     def display_events(self):

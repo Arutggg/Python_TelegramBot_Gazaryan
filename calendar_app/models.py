@@ -40,3 +40,21 @@ class Event(models.Model):
 
     def __str__(self):
         return f"{self.name} — {self.date:%d.%m.%Y} {self.time:%H:%M}"
+
+
+class BotStatistics(models.Model):
+    """Статистика работы бота за день."""
+
+    date = models.DateField("Дата", unique=True)
+    user_count = models.PositiveIntegerField("Новых пользователей", default=0)
+    event_count = models.PositiveIntegerField("Создано событий", default=0)
+    edited_events = models.PositiveIntegerField("Изменено событий", default=0)
+    cancelled_events = models.PositiveIntegerField("Отменено событий", default=0)
+
+    class Meta:
+        verbose_name = "Статистика за день"
+        verbose_name_plural = "Статистика"
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"Статистика за {self.date:%d.%m.%Y}"

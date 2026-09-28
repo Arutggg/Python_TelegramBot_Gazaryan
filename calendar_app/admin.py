@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BotUser, Event
+from .models import BotStatistics, BotUser, Event
 
 
 @admin.register(BotUser)
@@ -15,3 +15,9 @@ class EventAdmin(admin.ModelAdmin):
     list_filter = ("date",)
     search_fields = ("name", "details", "owner__username")
     list_select_related = ("owner",)
+
+
+@admin.register(BotStatistics)
+class BotStatisticsAdmin(admin.ModelAdmin):
+    list_display = ("date", "user_count", "event_count", "edited_events", "cancelled_events")
+    date_hierarchy = "date"
