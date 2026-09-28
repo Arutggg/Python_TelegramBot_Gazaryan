@@ -1,19 +1,11 @@
 import telegram
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-import notes
 from event_calendar import Calendar
 from secrets import API_TOKEN
 
 HELP_TEXT = (
-    "Команды для заметок:\n"
-    "/add название | текст — создать заметку\n"
-    "/read название — прочитать заметку\n"
-    "/edit название | новый текст — изменить заметку\n"
-    "/delete название — удалить заметку\n"
-    "/list — заметки от короткой к длинной\n"
-    "/sorted — заметки от длинной к короткой\n\n"
-    "Команды для календаря:\n"
+    "Команды:\n"
     "/create_event название | ДД.ММ.ГГГГ | ЧЧ:ММ | описание — создать событие\n"
     "/read_event название — показать событие\n"
     "/edit_event название | ДД.ММ.ГГГГ | описание — изменить событие\n"
@@ -24,59 +16,13 @@ HELP_TEXT = (
 calendar = Calendar()
 
 
-def split_args(context):
-    """Делит аргументы команды «название | текст» на две части."""
-    name, _, text = " ".join(context.args).partition("|")
-    return name.strip(), text.strip()
-
-
 def split_parts(context):
     """Делит аргументы команды по «|» на список частей."""
     return [part.strip() for part in " ".join(context.args).split("|")]
 
 
 def start(update, context):
-    update.message.reply_text("Привет! Я бот для заметок и событий.\n\n" + HELP_TEXT)
-
-
-def add_note(update, context):
-    name, text = split_args(context)
-    if not name or not text:
-        update.message.reply_text("Формат: /add название | текст")
-        return
-    update.message.reply_text(notes.create_note(name, text))
-
-
-def read_note(update, context):
-    name, _ = split_args(context)
-    if not name:
-        update.message.reply_text("Формат: /read название")
-        return
-    update.message.reply_text(notes.read_note(name))
-
-
-def edit_note(update, context):
-    name, text = split_args(context)
-    if not name or not text:
-        update.message.reply_text("Формат: /edit название | новый текст")
-        return
-    update.message.reply_text(notes.edit_note(name, text))
-
-
-def delete_note(update, context):
-    name, _ = split_args(context)
-    if not name:
-        update.message.reply_text("Формат: /delete название")
-        return
-    update.message.reply_text(notes.delete_note(name))
-
-
-def list_notes(update, context):
-    update.message.reply_text(notes.display_notes())
-
-
-def sorted_notes(update, context):
-    update.message.reply_text(notes.display_sorted_notes())
+    update.message.reply_text("Привет! Я бот-календарь.\n\n" + HELP_TEXT)
 
 
 def create_event(update, context):
@@ -129,12 +75,6 @@ def main():
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(CommandHandler(["start", "help"], start))
-    dispatcher.add_handler(CommandHandler("add", add_note))
-    dispatcher.add_handler(CommandHandler("read", read_note))
-    dispatcher.add_handler(CommandHandler("edit", edit_note))
-    dispatcher.add_handler(CommandHandler("delete", delete_note))
-    dispatcher.add_handler(CommandHandler("list", list_notes))
-    dispatcher.add_handler(CommandHandler("sorted", sorted_notes))
     dispatcher.add_handler(CommandHandler("create_event", create_event))
     dispatcher.add_handler(CommandHandler("read_event", read_event))
     dispatcher.add_handler(CommandHandler("edit_event", edit_event))
