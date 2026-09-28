@@ -16,14 +16,14 @@ def parse_date(text):
     try:
         return datetime.datetime.strptime(text.strip(), DATE_FORMAT).date()
     except ValueError:
-        raise CalendarError("Неверная дата. Формат: ДД.ММ.ГГГГ, например 25.12.2026.")
+        raise CalendarError("Неверная дата. Формат: ДД.ММ.ГГГГ, например 25.12.2026.") from None
 
 
 def parse_time(text):
     try:
         return datetime.datetime.strptime(text.strip(), TIME_FORMAT).time()
     except ValueError:
-        raise CalendarError("Неверное время. Формат: ЧЧ:ММ, например 18:30.")
+        raise CalendarError("Неверное время. Формат: ЧЧ:ММ, например 18:30.") from None
 
 
 def register_user(telegram_id, username="", first_name=""):
@@ -56,7 +56,7 @@ class Calendar:
         try:
             return self.user.events.get(name=event_name)
         except Event.DoesNotExist:
-            raise CalendarError(f"События «{event_name}» нет.")
+            raise CalendarError(f"События «{event_name}» нет.") from None
 
     def event_exists(self, event_name):
         return self.user.events.filter(name=event_name).exists()
@@ -110,7 +110,7 @@ class Calendar:
         try:
             event = self.user.events.get(pk=event_id)
         except Event.DoesNotExist:
-            raise CalendarError("Событие не найдено.")
+            raise CalendarError("Событие не найдено.") from None
         event.is_public = not event.is_public
         event.save(update_fields=["is_public"])
         return event

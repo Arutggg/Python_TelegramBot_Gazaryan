@@ -5,7 +5,7 @@ import json
 import pytest
 from django.urls import reverse
 
-import bot.app
+import bot.handlers.export as export_handlers
 from calendar_app.models import BotUser
 from calendar_app.tokens import make_token
 
@@ -21,7 +21,7 @@ def web(client, monkeypatch):
         assert response.status_code == 200
         return response.content
 
-    monkeypatch.setattr(bot.app, "download_export", fake_download)
+    monkeypatch.setattr(export_handlers, "download_export", fake_download)
     return requested
 
 
@@ -37,7 +37,9 @@ def test_export_csv_and_json(tg, client):
     response = client.get(export_path(1, "csv"))
     assert response["Content-Disposition"] == 'attachment; filename="events.csv"'
     rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
-    assert rows == [{"name": "ДР", "date": "12.10.2026", "time": "18:00", "details": "торт, свечи", "is_public": "False"}]
+    assert rows == [
+        {"name": "ДР", "date": "12.10.2026", "time": "18:00", "details": "торт, свечи", "is_public": "False"}
+    ]
 
     data = json.loads(client.get(export_path(1, "json")).content)
     assert data == [{"name": "ДР", "date": "12.10.2026", "time": "18:00", "details": "торт, свечи", "is_public": False}]
@@ -75,7 +77,7 @@ def test_export_when_web_is_down(tg, monkeypatch):
     def broken(url):
         raise OSError("connection refused")
 
-    monkeypatch.setattr(bot.app, "download_export", broken)
+    monkeypatch.setattr(export_handlers, "download_export", broken)
     tg.register(1)
     assert "недоступно" in tg.press(1, "export:csv")
     assert tg.documents == []

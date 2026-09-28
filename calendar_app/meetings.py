@@ -10,6 +10,14 @@ from .services import CalendarError, parse_date, parse_time
 DEFAULT_DURATION = 60
 
 
+def parse_duration(text):
+    """Длительность встречи в минутах."""
+    text = str(text).strip()
+    if not text.isdigit() or int(text) <= 0:
+        raise CalendarError("Введите длительность числом минут, например 30.")
+    return int(text)
+
+
 def user_meetings(user):
     """Все встречи пользователя: где он организатор или участник."""
     return (
@@ -71,8 +79,7 @@ def create_meeting(organizer, title, date_text, time_text, duration, identifiers
     не удалось никого, встреча не создаётся и выбрасывается CalendarError.
     """
     date, time = parse_date(date_text), parse_time(time_text)
-    if duration <= 0:
-        raise CalendarError("Длительность должна быть больше нуля.")
+    duration = parse_duration(duration)
     start = datetime.datetime.combine(date, time)
     end = start + datetime.timedelta(minutes=duration)
     if not is_free(organizer, start, end):
@@ -108,7 +115,7 @@ def respond_to_meeting(meeting_id, user, accept):
             meeting_id=meeting_id, user=user
         )
     except MeetingParticipant.DoesNotExist:
-        raise CalendarError("Вас нет среди участников этой встречи.")
+        raise CalendarError("Вас нет среди участников этой встречи.") from None
     meeting = invitation.meeting
     if meeting.status == MeetingStatus.CANCELLED:
         raise CalendarError("Встреча уже отменена.")

@@ -12,3 +12,4 @@ venv/
 # Django
 staticfiles/
 .coverage
+.ruff_cache/
