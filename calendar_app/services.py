@@ -41,6 +41,11 @@ def get_user(telegram_id):
     return BotUser.objects.filter(telegram_id=telegram_id).first()
 
 
+def get_user_events(telegram_id):
+    """События пользователя по его Telegram ID."""
+    return Event.objects.filter(owner__telegram_id=telegram_id)
+
+
 class Calendar:
     """Календарь одного пользователя: создание, чтение, редактирование и удаление событий."""
 
@@ -66,7 +71,7 @@ class Calendar:
             time=parse_time(event_time),
             details=event_details,
         )
-        stats.track_event_created()
+        stats.track_event_created(self.user)
         return event
 
     def read_event(self, event_name):
@@ -81,13 +86,13 @@ class Calendar:
         if new_description is not None:
             event.details = new_description
         event.save()
-        stats.track_event_edited()
+        stats.track_event_edited(self.user)
         return event
 
     def delete_event(self, event_name):
         event = self._get(event_name)
         event.delete()
-        stats.track_event_cancelled()
+        stats.track_event_cancelled(self.user)
         return event
 
     def display_events(self):

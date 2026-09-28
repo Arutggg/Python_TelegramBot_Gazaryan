@@ -1,12 +1,31 @@
 from django.contrib import admin
+from django.db.models import Count
 
 from .models import BotStatistics, BotUser, Event, Meeting, MeetingParticipant
 
 
+class EventInline(admin.TabularInline):
+    model = Event
+    extra = 0
+    fields = ("name", "date", "time", "details")
+
+
 @admin.register(BotUser)
 class BotUserAdmin(admin.ModelAdmin):
-    list_display = ("telegram_id", "username", "first_name", "registered_at")
+    list_display = (
+        "telegram_id", "username", "first_name", "registered_at",
+        "event_total", "events_created", "events_edited", "events_cancelled",
+    )
     search_fields = ("telegram_id", "username", "first_name")
+    readonly_fields = ("registered_at", "events_created", "events_edited", "events_cancelled")
+    inlines = [EventInline]
+
+    @admin.display(description="Событий сейчас", ordering="event_total")
+    def event_total(self, user):
+        return user.event_total
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(event_total=Count("events"))
 
 
 @admin.register(Event)

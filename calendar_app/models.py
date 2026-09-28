@@ -10,6 +10,9 @@ class BotUser(models.Model):
     username = models.CharField("Username", max_length=64, blank=True)
     first_name = models.CharField("Имя", max_length=255, blank=True)
     registered_at = models.DateTimeField("Дата регистрации", auto_now_add=True)
+    events_created = models.PositiveIntegerField("Создал событий", default=0)
+    events_edited = models.PositiveIntegerField("Изменил событий", default=0)
+    events_cancelled = models.PositiveIntegerField("Отменил событий", default=0)
 
     class Meta:
         verbose_name = "Пользователь"

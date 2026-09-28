@@ -21,6 +21,7 @@ from calendar_app.meetings import (
     user_meetings,
 )
 from calendar_app.models import MeetingStatus
+from calendar_app.tokens import make_token
 from calendar_app.services import (
     DATE_FORMAT,
     TIME_FORMAT,
@@ -58,6 +59,8 @@ TEXT = Filters.text & ~Filters.command
 HELP_TEXT = (
     "Команды:\n"
     "/register — зарегистрироваться\n"
+    "/login — подключить Telegram ID к учётной записи и получить ссылку на личный кабинет\n"
+    "/calendar — мой календарь: события и встречи\n"
     "/create_event — создать событие\n"
     "/events — все мои события\n"
     "/read_event [название] — показать событие\n"
@@ -133,6 +136,33 @@ def register(update, context):
         )
     else:
         update.message.reply_text("Вы уже зарегистрированы.")
+
+
+def cabinet_url(user):
+    return f"{settings.WEB_URL}/cabinet/{make_token(user)}/"
+
+
+def login(update, context):
+    """Подключает Telegram ID к учётной записи (создаёт её при необходимости)
+    и присылает ссылку на личный кабинет. ID берём из сообщения, а не из текста:
+    так нельзя войти под чужим ID."""
+    tg_user = update.effective_user
+    user, created = register_user(tg_user.id, tg_user.username, tg_user.first_name)
+    update.message.reply_text(
+        f"{'Учётная запись создана' if created else 'Вы вошли'}.\n"
+        f"Ваш Telegram ID: {user.telegram_id}\n\n"
+        f"Личный кабинет (ссылка действует неделю):\n{cabinet_url(user)}"
+    )
+
+
+@registered_only
+def show_calendar(update, context, calendar):
+    meetings = user_meetings(calendar.user)
+    text = "🗓 Ваш календарь\n\nСобытия:\n\n" + format_events(calendar.display_events())
+    text += "\n\nВстречи:\n\n" + (
+        "\n\n".join(format_meeting(meeting) for meeting in meetings) if meetings else "Встреч пока нет."
+    )
+    update.message.reply_text(text)
 
 
 @registered_only
@@ -499,6 +529,8 @@ def create_updater(token=None):
     dispatcher.add_handler(CommandHandler(["start", "help"], start))
     dispatcher.add_handler(CommandHandler("meetings", list_meetings))
     dispatcher.add_handler(CommandHandler("register", register))
+    dispatcher.add_handler(CommandHandler("login", login))
+    dispatcher.add_handler(CommandHandler("calendar", show_calendar))
     dispatcher.add_handler(CommandHandler("events", display_events))
     dispatcher.add_handler(cancel_handler)
     dispatcher.add_handler(MessageHandler(Filters.all, unknown))
