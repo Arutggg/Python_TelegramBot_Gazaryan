@@ -11,3 +11,4 @@ venv/
 
 # Django
 staticfiles/
+.coverage
