@@ -1,0 +1,7 @@
+python-telegram-bot==13.13
+# ptb 13 на Python 3.12 не может использовать свою встроенную копию urllib3
+# и берёт внешнюю; APScheduler из ptb 13 требует pkg_resources (setuptools < 81)
+urllib3<2
+setuptools<81
+psycopg2-binary==2.9.10
+pytest==8.3.4
