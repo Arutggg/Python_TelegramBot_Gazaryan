@@ -1,4 +1,5 @@
 # Токен и пароли
+.env
 secrets.py
 
 # Python
@@ -7,3 +8,8 @@ __pycache__/
 venv/
 .venv/
 .pytest_cache/
+
+# Django
+staticfiles/
+.coverage
+.ruff_cache/

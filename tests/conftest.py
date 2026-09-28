@@ -1,44 +1,101 @@
-import os
-import sys
-import types
+import datetime
 
-import psycopg2
 import pytest
+from telegram import CallbackQuery, Chat, Message, MessageEntity, Update, User
 
-# Тестовая база берётся из переменных окружения, чтобы не трогать рабочую.
-TEST_DB = {
-    "host": os.getenv("TEST_DB_HOST", "localhost"),
-    "database": os.getenv("TEST_DB_NAME", "calendar_bot_test"),
-    "user": os.getenv("TEST_DB_USER", "postgres"),
-    "password": os.getenv("TEST_DB_PASSWORD", "postgres"),
-}
+from bot.app import create_updater
 
-# Код импортирует настройки из secrets.py, которого нет в репозитории.
-# Подменяем его модулем с тестовыми значениями (сохраняя функции stdlib secrets).
-import secrets as _stdlib_secrets  # noqa: E402
 
-fake_secrets = types.ModuleType("secrets")
-fake_secrets.__dict__.update(vars(_stdlib_secrets))
-fake_secrets.__dict__.update(
-    API_TOKEN="123456:TEST-TOKEN",
-    DB_HOST=TEST_DB["host"],
-    DB_NAME=TEST_DB["database"],
-    DB_USER=TEST_DB["user"],
-    DB_PASSWORD=TEST_DB["password"],
-)
-sys.modules["secrets"] = fake_secrets
+class FakeTelegram:
+    """Отправляет боту сообщения от имени пользователей и собирает ответы. В Telegram не ходит."""
 
-from db import init_db  # noqa: E402
+    def __init__(self):
+        self.updater = create_updater(token="123456:TEST-TOKEN")
+        self.bot = self.updater.bot
+        self.bot._bot = User(1, "Calendar", True, username="calendar_test_bot")
+        self.sent = []  # все сообщения, отправленные ботом: (chat_id, text, kwargs)
+        self.bot.send_message = self._send_message
+        self.bot.answer_callback_query = self._answer_callback_query
+        self.bot.edit_message_text = self._edit_message_text
+        self.bot.edit_message_reply_markup = self._edit_message_reply_markup
+        self.bot.send_document = self._send_document
+        self.documents = []  # файлы, отправленные ботом: (chat_id, filename, bytes)
+        self.alerts = []  # всплывающие ответы на нажатия кнопок
+        self.update_id = 0
+
+    def _send_message(self, chat_id, text, **kwargs):
+        self.sent.append((chat_id, text, kwargs))
+
+    def _answer_callback_query(self, callback_query_id, text=None, **kwargs):
+        if text:
+            self.alerts.append(text)
+        return True
+
+    def _edit_message_text(self, text, chat_id=None, message_id=None, **kwargs):
+        self.sent.append((chat_id, text, kwargs))
+
+    def _edit_message_reply_markup(self, chat_id=None, message_id=None, reply_markup=None, **kwargs):
+        self.sent.append((chat_id, "(обновлены кнопки)", {"reply_markup": reply_markup}))
+
+    def _send_document(self, chat_id, document, filename=None, **kwargs):
+        self.documents.append((chat_id, filename, document.read()))
+
+    def _next_id(self):
+        self.update_id += 1
+        return self.update_id
+
+    def send(self, user_id, text, username=None):
+        """Отправляет сообщение от пользователя и возвращает последний ответ ему."""
+        user = User(user_id, f"User{user_id}", False, username=username or f"user{user_id}")
+        entities = []
+        if text.startswith("/"):
+            entities = [MessageEntity(MessageEntity.BOT_COMMAND, 0, len(text.split()[0]))]
+        message = Message(
+            self._next_id(), datetime.datetime.now(), Chat(user_id, Chat.PRIVATE),
+            from_user=user, text=text, entities=entities, bot=self.bot,
+        )
+        self.sent.clear()
+        self.updater.dispatcher.process_update(Update(self.update_id, message=message))
+        return self.last_to(user_id)
+
+    def press(self, user_id, callback_data):
+        """Нажимает инлайн-кнопку с callback_data от имени пользователя."""
+        user = User(user_id, f"User{user_id}", False, username=f"user{user_id}")
+        message = Message(
+            self._next_id(), datetime.datetime.now(), Chat(user_id, Chat.PRIVATE),
+            text="кнопки", bot=self.bot,
+        )
+        query = CallbackQuery(
+            str(self.update_id), user, "chat", message=message, data=callback_data, bot=self.bot
+        )
+        self.sent.clear()
+        self.alerts.clear()
+        self.updater.dispatcher.process_update(Update(self.update_id, callback_query=query))
+        return self.alerts[-1] if self.alerts else self.last_to(user_id)
+
+    def buttons_to(self, chat_id):
+        """callback_data всех кнопок в сообщениях, отправленных пользователю."""
+        return [
+            button.callback_data
+            for cid, _, kwargs in self.sent
+            if cid == chat_id and kwargs.get("reply_markup")
+            for row in kwargs["reply_markup"].inline_keyboard
+            for button in row
+        ]
+
+    def last_to(self, chat_id):
+        texts = [text for cid, text, _ in self.sent if cid == chat_id]
+        return texts[-1] if texts else None
+
+    def register(self, user_id, username=None):
+        self.send(user_id, "/register", username=username)
+
+    def create_event(self, user_id, name, date="01.10.2026", time="10:00", details="/skip"):
+        for text in ["/create_event", name, date, time]:
+            self.send(user_id, text)
+        return self.send(user_id, details)
 
 
 @pytest.fixture
-def conn():
-    try:
-        connection = psycopg2.connect(**TEST_DB)
-    except psycopg2.OperationalError as error:
-        pytest.skip(f"Тестовая база недоступна: {error}")
-    with connection, connection.cursor() as cursor:
-        cursor.execute("DROP TABLE IF EXISTS events, users")
-    init_db(connection)
-    yield connection
-    connection.close()
+def tg(db):
+    return FakeTelegram()
