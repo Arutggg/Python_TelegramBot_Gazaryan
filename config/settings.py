@@ -17,8 +17,10 @@ DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,web").split(",")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-# Адрес веб-приложения: по нему бот строит ссылки на личный кабинет и выгрузку
+# Адрес веб-приложения: по нему бот строит ссылки на личный кабинет и выгрузку для пользователя
 WEB_URL = os.getenv("WEB_URL", "http://localhost:8000").rstrip("/")
+# Адрес, по которому сам бот обращается к веб-приложению (в Docker — http://web:8000)
+INTERNAL_WEB_URL = os.getenv("INTERNAL_WEB_URL", WEB_URL).rstrip("/")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

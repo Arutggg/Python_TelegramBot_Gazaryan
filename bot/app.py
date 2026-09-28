@@ -550,8 +550,8 @@ def shared(update, context, calendar):
 
 # ---------- Выгрузка событий ----------
 
-def export_url(user, file_format):
-    return f"{settings.WEB_URL}/export/{make_token(user)}/?format={file_format}"
+def export_url(user, file_format, base_url=None):
+    return f"{base_url or settings.WEB_URL}/export/{make_token(user)}/?format={file_format}"
 
 
 def download_export(url):
@@ -582,7 +582,7 @@ def send_export(update, context):
         return
     file_format = query.data.split(":")[1]
     try:
-        content = download_export(export_url(user, file_format))
+        content = download_export(export_url(user, file_format, settings.INTERNAL_WEB_URL))
     except OSError:
         logger.exception("Не удалось получить выгрузку")
         query.answer("Веб-приложение недоступно, попробуйте позже.", show_alert=True)
