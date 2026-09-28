@@ -1,6 +1,7 @@
-from django.http import Http404
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 
+from .export import FORMATS, export_events
 from .meetings import user_meetings
 from .services import public_events
 from .tokens import user_from_token
@@ -23,3 +24,15 @@ def cabinet(request, token):
         "shared_events": public_events(exclude_user=user),
         "token": token,
     })
+
+
+def export(request, token):
+    """Выгрузка событий владельца токена. ?format=csv (по умолчанию) или ?format=json."""
+    user = get_user_or_404(token)
+    file_format = request.GET.get("format", "csv")
+    if file_format not in FORMATS:
+        return HttpResponseBadRequest("Поддерживаются форматы: " + ", ".join(FORMATS))
+    content, content_type = export_events(user.events.all(), file_format)
+    response = HttpResponse(content, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="events.{file_format}"'
+    return response

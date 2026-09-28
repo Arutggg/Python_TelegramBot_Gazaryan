@@ -6,4 +6,5 @@ app_name = "calendar_app"
 
 urlpatterns = [
     path("cabinet/<str:token>/", views.cabinet, name="cabinet"),
+    path("export/<str:token>/", views.export, name="export"),
 ]

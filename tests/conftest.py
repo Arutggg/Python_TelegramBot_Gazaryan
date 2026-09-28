@@ -18,6 +18,8 @@ class FakeTelegram:
         self.bot.answer_callback_query = self._answer_callback_query
         self.bot.edit_message_text = self._edit_message_text
         self.bot.edit_message_reply_markup = self._edit_message_reply_markup
+        self.bot.send_document = self._send_document
+        self.documents = []  # файлы, отправленные ботом: (chat_id, filename, bytes)
         self.alerts = []  # всплывающие ответы на нажатия кнопок
         self.update_id = 0
 
@@ -34,6 +36,9 @@ class FakeTelegram:
 
     def _edit_message_reply_markup(self, chat_id=None, message_id=None, reply_markup=None, **kwargs):
         self.sent.append((chat_id, "(обновлены кнопки)", {"reply_markup": reply_markup}))
+
+    def _send_document(self, chat_id, document, filename=None, **kwargs):
+        self.documents.append((chat_id, filename, document.read()))
 
     def _next_id(self):
         self.update_id += 1

@@ -1,5 +1,7 @@
 import functools
+import io
 import logging
+import urllib.request
 
 from django.conf import settings
 from django.db import close_old_connections, connection
@@ -71,6 +73,7 @@ HELP_TEXT = (
     "/share [название] — поделиться событием (без названия — выбрать кнопками)\n"
     "/unshare название — скрыть событие\n"
     "/shared [@username] — общие события других пользователей\n"
+    "/export — выгрузить мои события в CSV или JSON\n"
     "/meeting — назначить встречу другим пользователям\n"
     "/meetings — мои встречи и их статусы\n"
     "/cancel — отменить текущее действие"
@@ -545,6 +548,54 @@ def shared(update, context, calendar):
     )
 
 
+# ---------- Выгрузка событий ----------
+
+def export_url(user, file_format):
+    return f"{settings.WEB_URL}/export/{make_token(user)}/?format={file_format}"
+
+
+def download_export(url):
+    """Запрашивает выгрузку у веб-приложения и возвращает содержимое файла."""
+    with urllib.request.urlopen(url, timeout=15) as response:
+        return response.read()
+
+
+@registered_only
+def export(update, context, calendar):
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📄 CSV", callback_data="export:csv"),
+        InlineKeyboardButton("🧾 JSON", callback_data="export:json"),
+    ]])
+    update.message.reply_text(
+        "В каком формате выгрузить события?\n\n"
+        f"Или скачайте в браузере:\n{export_url(calendar.user, 'csv')}",
+        reply_markup=keyboard,
+    )
+
+
+def send_export(update, context):
+    """Нажатие на кнопку формата: бот скачивает файл с веб-приложения и присылает его."""
+    query = update.callback_query
+    user = get_user(query.from_user.id)
+    if user is None:
+        query.answer("Сначала зарегистрируйтесь: /register", show_alert=True)
+        return
+    file_format = query.data.split(":")[1]
+    try:
+        content = download_export(export_url(user, file_format))
+    except OSError:
+        logger.exception("Не удалось получить выгрузку")
+        query.answer("Веб-приложение недоступно, попробуйте позже.", show_alert=True)
+        return
+    query.answer()
+    context.bot.send_document(
+        chat_id=user.telegram_id,
+        document=io.BytesIO(content),
+        filename=f"events.{file_format}",
+        caption="Ваши события",
+    )
+
+
 def error_handler(update, context):
     logger.exception("Ошибка при обработке обновления", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
@@ -619,6 +670,8 @@ def create_updater(token=None):
 
     dispatcher.add_handler(CommandHandler(["start", "help"], start))
     dispatcher.add_handler(CommandHandler("meetings", list_meetings))
+    dispatcher.add_handler(CommandHandler("export", export))
+    dispatcher.add_handler(CallbackQueryHandler(send_export, pattern=r"^export:(csv|json)$"))
     dispatcher.add_handler(CommandHandler("share", share))
     dispatcher.add_handler(CommandHandler("unshare", unshare))
     dispatcher.add_handler(CommandHandler("shared", shared))

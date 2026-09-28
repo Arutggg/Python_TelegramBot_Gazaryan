@@ -37,6 +37,7 @@
   </div>
 
   <h2>Мои события</h2>
+  <p class="muted">Скачать: <a href="{% url 'calendar_app:export' token %}?format=csv">CSV</a> · <a href="{% url 'calendar_app:export' token %}?format=json">JSON</a></p>
   <div class="list">
     {% for event in events %}
       <div class="item">
