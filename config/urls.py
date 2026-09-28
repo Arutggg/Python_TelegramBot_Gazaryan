@@ -5,5 +5,7 @@ admin.site.site_header = "Бот-календарь: администриров�
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", include("calendar_app.api.urls")),
+    path("api-auth/", include("rest_framework.urls")),
     path("", include("calendar_app.urls")),
 ]

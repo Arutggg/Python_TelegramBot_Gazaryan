@@ -4,6 +4,7 @@ python-telegram-bot==13.13
 urllib3<2
 setuptools<81
 Django>=5.2,<5.3
+djangorestframework==3.18.1
 psycopg2-binary==2.9.10
 python-dotenv==1.2.3
 gunicorn==26.2.0
