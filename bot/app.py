@@ -17,6 +17,7 @@ from telegram.ext import (
 from calendar_app.meetings import (
     DEFAULT_DURATION,
     create_meeting,
+    find_user,
     respond_to_meeting,
     user_meetings,
 )
@@ -30,6 +31,7 @@ from calendar_app.services import (
     get_user,
     parse_date,
     parse_time,
+    public_events,
     register_user,
 )
 
@@ -66,23 +68,28 @@ HELP_TEXT = (
     "/read_event [название] — показать событие\n"
     "/edit_event — изменить событие\n"
     "/delete_event [название] — удалить событие\n"
+    "/share [название] — поделиться событием (без названия — выбрать кнопками)\n"
+    "/unshare название — скрыть событие\n"
+    "/shared [@username] — общие события других пользователей\n"
     "/meeting — назначить встречу другим пользователям\n"
     "/meetings — мои встречи и их статусы\n"
     "/cancel — отменить текущее действие"
 )
 
 
-def format_event(event):
-    text = f"📌 {event.name} — {event.date.strftime(DATE_FORMAT)} в {event.time.strftime(TIME_FORMAT)}"
+def format_event(event, with_owner=False):
+    icon = "🌐" if event.is_public else "📌"
+    owner = f" ({event.owner})" if with_owner else ""
+    text = f"{icon} {event.name}{owner} — {event.date.strftime(DATE_FORMAT)} в {event.time.strftime(TIME_FORMAT)}"
     if event.details:
         text += f"\n{event.details}"
     return text
 
 
-def format_events(events, empty_text="Событий пока нет."):
+def format_events(events, empty_text="Событий пока нет.", with_owner=False):
     if not events:
         return empty_text
-    return "\n\n".join(format_event(event) for event in events)
+    return "\n\n".join(format_event(event, with_owner) for event in events)
 
 
 STATUS_ICONS = {
@@ -161,6 +168,10 @@ def show_calendar(update, context, calendar):
     text = "🗓 Ваш календарь\n\nСобытия:\n\n" + format_events(calendar.display_events())
     text += "\n\nВстречи:\n\n" + (
         "\n\n".join(format_meeting(meeting) for meeting in meetings) if meetings else "Встреч пока нет."
+    )
+    shared = public_events(exclude_user=calendar.user)
+    text += "\n\nОбщие события:\n\n" + format_events(
+        shared, "Другие пользователи пока ничем не поделились.", with_owner=True
     )
     update.message.reply_text(text)
 
@@ -454,6 +465,86 @@ def answer_invitation(update, context):
     )
 
 
+# ---------- Публичные события ----------
+
+def share_keyboard(events):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            f"{'🌐' if event.is_public else '🔒'} {event.name}",
+            callback_data=f"share:{event.id}",
+        )]
+        for event in events
+    ])
+
+
+@registered_only
+def share(update, context, calendar):
+    name = " ".join(context.args).strip()
+    if name:
+        try:
+            calendar.set_public(name, True)
+            update.message.reply_text(f"Событие «{name}» теперь видят другие пользователи.")
+        except CalendarError as error:
+            update.message.reply_text(str(error))
+        return
+    events = calendar.display_events()
+    if not events:
+        update.message.reply_text("Событий пока нет.")
+        return
+    update.message.reply_text(
+        "Нажмите на событие, чтобы открыть или скрыть его.\n🌐 — видят все, 🔒 — только вы.",
+        reply_markup=share_keyboard(events),
+    )
+
+
+@registered_only
+def unshare(update, context, calendar):
+    name = " ".join(context.args).strip()
+    if not name:
+        update.message.reply_text("Формат: /unshare название")
+        return
+    try:
+        calendar.set_public(name, False)
+        update.message.reply_text(f"Событие «{name}» скрыто.")
+    except CalendarError as error:
+        update.message.reply_text(str(error))
+
+
+def toggle_share(update, context):
+    """Нажатие на событие в списке /share."""
+    query = update.callback_query
+    user = get_user(query.from_user.id)
+    if user is None:
+        query.answer("Сначала зарегистрируйтесь: /register", show_alert=True)
+        return
+    calendar = Calendar(user)
+    try:
+        event = calendar.toggle_public(int(query.data.split(":")[1]))
+    except CalendarError as error:
+        query.answer(str(error), show_alert=True)
+        return
+    query.answer("Теперь видят все" if event.is_public else "Скрыто")
+    query.edit_message_reply_markup(reply_markup=share_keyboard(calendar.display_events()))
+
+
+@registered_only
+def shared(update, context, calendar):
+    identifier = " ".join(context.args).strip()
+    if identifier:
+        owner = find_user(identifier)
+        if owner is None:
+            update.message.reply_text("Такой пользователь не зарегистрирован в боте.")
+            return
+        events = public_events(owner=owner)
+        title = f"Общие события {owner}:"
+    else:
+        events = public_events(exclude_user=calendar.user)
+        title = "Общие события других пользователей:"
+    update.message.reply_text(
+        f"{title}\n\n" + format_events(events, "Общих событий нет.", with_owner=not identifier)
+    )
+
+
 def error_handler(update, context):
     logger.exception("Ошибка при обработке обновления", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
@@ -528,6 +619,10 @@ def create_updater(token=None):
 
     dispatcher.add_handler(CommandHandler(["start", "help"], start))
     dispatcher.add_handler(CommandHandler("meetings", list_meetings))
+    dispatcher.add_handler(CommandHandler("share", share))
+    dispatcher.add_handler(CommandHandler("unshare", unshare))
+    dispatcher.add_handler(CommandHandler("shared", shared))
+    dispatcher.add_handler(CallbackQueryHandler(toggle_share, pattern=r"^share:\d+$"))
     dispatcher.add_handler(CommandHandler("register", register))
     dispatcher.add_handler(CommandHandler("login", login))
     dispatcher.add_handler(CommandHandler("calendar", show_calendar))

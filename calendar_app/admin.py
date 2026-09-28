@@ -7,7 +7,7 @@ from .models import BotStatistics, BotUser, Event, Meeting, MeetingParticipant
 class EventInline(admin.TabularInline):
     model = Event
     extra = 0
-    fields = ("name", "date", "time", "details")
+    fields = ("name", "date", "time", "details", "is_public")
 
 
 @admin.register(BotUser)
@@ -30,8 +30,8 @@ class BotUserAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ("name", "owner", "date", "time")
-    list_filter = ("date",)
+    list_display = ("name", "owner", "date", "time", "is_public")
+    list_filter = ("is_public", "date")
     search_fields = ("name", "details", "owner__username")
     list_select_related = ("owner",)
 

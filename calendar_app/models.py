@@ -33,6 +33,7 @@ class Event(models.Model):
     date = models.DateField("Дата")
     time = models.TimeField("Время")
     details = models.TextField("Описание", blank=True)
+    is_public = models.BooleanField("Публичное", default=False)
     created_at = models.DateTimeField("Создано", auto_now_add=True)
 
     class Meta:

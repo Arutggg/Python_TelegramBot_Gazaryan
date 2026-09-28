@@ -97,3 +97,30 @@ class Calendar:
 
     def display_events(self):
         return list(self.user.events.all())
+
+    def set_public(self, event_name, is_public):
+        """Делится событием (делает публичным) или скрывает его."""
+        event = self._get(event_name)
+        event.is_public = is_public
+        event.save(update_fields=["is_public"])
+        return event
+
+    def toggle_public(self, event_id):
+        """Переключает видимость события по id. Работает только со своими событиями."""
+        try:
+            event = self.user.events.get(pk=event_id)
+        except Event.DoesNotExist:
+            raise CalendarError("Событие не найдено.")
+        event.is_public = not event.is_public
+        event.save(update_fields=["is_public"])
+        return event
+
+
+def public_events(owner=None, exclude_user=None):
+    """Публичные события: одного пользователя (owner) или всех, кроме exclude_user."""
+    events = Event.objects.filter(is_public=True).select_related("owner")
+    if owner is not None:
+        events = events.filter(owner=owner)
+    if exclude_user is not None:
+        events = events.exclude(owner=exclude_user)
+    return events

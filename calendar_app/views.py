@@ -2,6 +2,7 @@ from django.http import Http404
 from django.shortcuts import render
 
 from .meetings import user_meetings
+from .services import public_events
 from .tokens import user_from_token
 
 
@@ -19,5 +20,6 @@ def cabinet(request, token):
         "profile": user,
         "events": user.events.all(),
         "meetings": user_meetings(user),
+        "shared_events": public_events(exclude_user=user),
         "token": token,
     })

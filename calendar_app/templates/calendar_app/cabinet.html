@@ -40,11 +40,23 @@
   <div class="list">
     {% for event in events %}
       <div class="item">
-        <div class="item-head"><strong>{{ event.name }}</strong><span class="when">{{ event.date|date:"d.m.Y" }} {{ event.time|time:"H:i" }}</span></div>
+        <div class="item-head"><strong>{% if event.is_public %}🌐 {% endif %}{{ event.name }}</strong><span class="when">{{ event.date|date:"d.m.Y" }} {{ event.time|time:"H:i" }}</span></div>
         {% if event.details %}<div class="details">{{ event.details }}</div>{% endif %}
       </div>
     {% empty %}
       <p class="muted">Событий пока нет. Создайте первое командой /create_event.</p>
+    {% endfor %}
+  </div>
+
+  <h2>Общие события</h2>
+  <div class="list">
+    {% for event in shared_events %}
+      <div class="item">
+        <div class="item-head"><strong>{{ event.name }}</strong><span class="when">{{ event.date|date:"d.m.Y" }} {{ event.time|time:"H:i" }}</span></div>
+        <div class="details">{{ event.owner }}{% if event.details %} · {{ event.details }}{% endif %}</div>
+      </div>
+    {% empty %}
+      <p class="muted">Другие пользователи пока ничем не поделились.</p>
     {% endfor %}
   </div>
 
