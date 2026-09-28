@@ -1,6 +1,7 @@
 import telegram
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
+from db import get_connection, init_db
 from event_calendar import Calendar
 from secrets import API_TOKEN
 
@@ -13,7 +14,9 @@ HELP_TEXT = (
     "/events — все события"
 )
 
-calendar = Calendar()
+conn = get_connection()
+init_db(conn)
+calendar = Calendar(conn)
 
 
 def split_parts(context):
